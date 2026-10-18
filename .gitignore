@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Django
+db.sqlite3
+*.sqlite3
+staticfiles/
+media/
+
+# macOS and editors
+.DS_Store
+.vscode/
+.idea/
+
+# Tests
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Local API response
+spotter-response.json
