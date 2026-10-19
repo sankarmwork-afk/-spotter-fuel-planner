@@ -1,11 +1,14 @@
+import hashlib
+
 import requests
 from django.core.cache import cache
-
+from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .services import recommend_fuel_stops
+
 from .serializers import RouteRequestSerializer
+from .services import recommend_fuel_stops
 
 
 class RouteAPIView(APIView):
@@ -17,8 +20,9 @@ class RouteAPIView(APIView):
     REQUEST_TIMEOUT = 15
 
     def _geocode(self, location):
-        import hashlib
-        location_key = hashlib.sha256(location.strip().casefold().encode("utf-8")).hexdigest()
+        location_key = hashlib.sha256(
+            location.strip().casefold().encode("utf-8")
+        ).hexdigest()
         cache_key = f"spotter_geocode_v1_{location_key}"
         cached_result = cache.get(cache_key)
         if cached_result is not None:
@@ -26,7 +30,12 @@ class RouteAPIView(APIView):
 
         response = requests.get(
             self.GEOCODING_URL,
-            params={"q": location, "format": "jsonv2", "limit": 1, "countrycodes": "us"},
+            params={
+                "q": location,
+                "format": "jsonv2",
+                "limit": 1,
+                "countrycodes": "us",
+            },
             headers=self.REQUEST_HEADERS,
             timeout=self.REQUEST_TIMEOUT,
         )
@@ -115,3 +124,7 @@ class RouteAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def map_page(request):
+    return render(request, "routes/map.html")

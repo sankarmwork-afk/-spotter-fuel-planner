@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotter Fuel Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #f4f7fb; color: #172033; }
+        header { padding: 20px 24px; background: #102a43; color: white; }
+        header h1 { margin: 0 0 6px; font-size: 24px; }
+        header p { margin: 0; color: #d9e5f2; }
+        main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+        .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .card { padding: 16px; background: white; border-radius: 10px; box-shadow: 0 2px 8px #102a4310; }
+        .label { color: #64748b; font-size: 13px; }
+        .value { margin-top: 8px; font-size: 22px; font-weight: bold; }
+        #map { height: 520px; border-radius: 12px; border: 1px solid #dbe3ed; }
+        #status { margin: 12px 0; color: #475569; }
+        @media (max-width: 600px) { .summary { grid-template-columns: 1fr; } #map { height: 420px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Spotter Fuel Planner</h1>
+        <p>Driving routes and fuel-stop recommendations</p>
+    </header>
+    <main>
+        <section class="summary">
+            <div class="card"><div class="label">Driving distance</div><div class="value" id="distance">Loading...</div></div>
+            <div class="card"><div class="label">Estimated fuel cost</div><div class="value" id="cost">Loading...</div></div>
+            <div class="card"><div class="label">Recommended fuel stops</div><div class="value" id="stops">Loading...</div></div>
+        </section>
+        <div id="status">Requesting route information...</div>
+        <div id="map" aria-label="Driving route map"></div>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map("map");
+        // Use an alternative OpenStreetMap-based tile server in case the default tile host blocks requests.
+        L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        async function loadRoute() {
+            const status = document.getElementById("status");
+            try {
+                const response = await fetch("/api/route/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ start: "Dallas, Texas, USA", finish: "Atlanta, Georgia, USA" })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Could not load route.");
+                if (!data.geometry || !Array.isArray(data.geometry.coordinates)) {
+                    throw new Error("The API response does not contain route geometry.");
+                }
+
+                const fuel = data.fuel_planning || {};
+                const coordinates = data.geometry.coordinates.map(point => [point[1], point[0]]);
+                const routeLine = L.polyline(coordinates, { color: "#2563eb", weight: 5 }).addTo(map);
+                L.marker([data.start.latitude, data.start.longitude]).addTo(map).bindPopup("Start: Dallas, Texas");
+                L.marker([data.finish.latitude, data.finish.longitude]).addTo(map).bindPopup("Destination: Atlanta, Georgia");
+
+                const stops = (fuel.recommended_stops || []).filter(stop =>
+                    stop.latitude != null && stop.longitude != null &&
+                    Number.isFinite(Number(stop.latitude)) && Number.isFinite(Number(stop.longitude))
+                );
+                stops.forEach(stop => {
+                    const price = stop.price_per_gallon ?? stop.retail_price;
+                    const priceText = price == null || !Number.isFinite(Number(price)) ? "Unavailable" : `$${Number(price).toFixed(3)}/gallon`;
+                    L.circleMarker([Number(stop.latitude), Number(stop.longitude)], {
+                        radius: 8, color: "#15803d", fillColor: "#22c55e", fillOpacity: 0.9
+                    }).addTo(map).bindPopup(
+                        `<b>${stop.name || "Fuel station"}</b><br>${stop.city || ""}, ${stop.state || ""}<br>Price: ${priceText}`
+                    );
+                });
+
+                map.fitBounds(routeLine.getBounds(), { padding: [25, 25] });
+                document.getElementById("distance").textContent = Number(data.distance_miles).toFixed(2) + " miles";
+                document.getElementById("cost").textContent = fuel.estimated_total_fuel_cost == null
+                    ? "Unavailable" : `$${Number(fuel.estimated_total_fuel_cost).toFixed(2)}*`;
+                document.getElementById("stops").textContent = stops.length;
+                status.textContent = "*Fuel cost is an estimate. Station-price identity may not be fully verified.";
+            } catch (error) {
+                status.textContent = "Could not load the route: " + error.message;
+                map.setView([37.8, -96], 4);
+            }
+        }
+        loadRoute();
+    </script>
+</body>
+</html>
